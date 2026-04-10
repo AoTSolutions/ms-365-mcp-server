@@ -20,8 +20,17 @@ async function main(): Promise<void> {
     const authManager = await AuthManager.create(scopes);
     await authManager.loadTokenCache();
 
+    if (args.authBrowser) {
+      authManager.setUseInteractiveAuth(true);
+      logger.info('Browser-based interactive auth enabled');
+    }
+
     if (args.login) {
-      await authManager.acquireTokenByDeviceCode();
+      if (args.authBrowser) {
+        await authManager.acquireTokenInteractive();
+      } else {
+        await authManager.acquireTokenByDeviceCode();
+      }
       logger.info('Login completed, testing connection with Graph API...');
       const result = await authManager.testLogin();
       console.log(JSON.stringify(result));
@@ -80,7 +89,9 @@ async function main(): Promise<void> {
     await server.initialize(version);
     await server.start();
   } catch (error) {
-    logger.error(`Startup error: ${error}`);
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Startup error: ${message}`);
+    console.error(message);
     process.exit(1);
   }
 }
