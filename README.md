@@ -94,66 +94,32 @@ MS365_MCP_OUTPUT_FORMAT=toon npx @softeria/ms-365-mcp-server
 
 ## Supported Services & Tools
 
+The server provides 200+ tools covering most of the Microsoft Graph API surface. Each tool maps 1-to-1 to a Graph API endpoint and is defined declaratively in [`src/endpoints.json`](src/endpoints.json).
+
 ### Personal Account Tools (Available by default)
 
-**Email (Outlook)**
-<sub>list-mail-messages, list-mail-folders, list-mail-child-folders, list-mail-folder-messages, get-mail-message, send-mail,
-delete-mail-message, create-draft-email, move-mail-message, create-mail-folder, create-mail-child-folder,
-update-mail-folder, delete-mail-folder</sub>
-
-**Calendar**  
-<sub>list-calendars, list-calendar-events, get-calendar-event, get-calendar-view, create-calendar-event,
-update-calendar-event, delete-calendar-event</sub>
-
-**OneDrive Files**  
-<sub>list-drives, get-drive-root-item, list-folder-files, download-onedrive-file-content, upload-file-content,
-delete-onedrive-file</sub>
-
-**Excel Operations**  
-<sub>list-excel-worksheets, get-excel-range, create-excel-chart, format-excel-range, sort-excel-range</sub>
-
-**OneNote**  
-<sub>list-onenote-notebooks, list-onenote-notebook-sections, list-onenote-section-pages, get-onenote-page-content,
-create-onenote-page</sub>
-
-**To Do Tasks**  
-<sub>list-todo-task-lists, list-todo-tasks, get-todo-task, create-todo-task, update-todo-task, delete-todo-task</sub>
-
-**Planner**  
-<sub>list-planner-tasks, get-planner-plan, list-plan-tasks, get-planner-task, create-planner-task</sub>
-
-**Contacts**  
-<sub>list-outlook-contacts, get-outlook-contact, create-outlook-contact, update-outlook-contact,
-delete-outlook-contact</sub>
-
-**User Profile**  
-<sub>get-current-user</sub>
-
-**Search**  
-<sub>search-query</sub>
+Email (Outlook), Calendar, OneDrive Files, Excel, OneNote, To Do Tasks, Planner, Contacts, User Profile, Search
 
 ### Organization Account Tools (Requires --org-mode flag)
 
-**Teams & Chats**
-<sub>list-chats, get-chat, list-chat-messages, get-chat-message, send-chat-message, list-chat-message-replies,
-reply-to-chat-message, list-joined-teams, get-team, list-team-channels, get-team-channel, list-channel-messages,
-get-channel-message, send-channel-message, list-team-members</sub>
+Teams & Chats, Online Meetings, Transcripts & Recordings, Attendance Reports, SharePoint Sites & Lists, Shared Mailboxes & Calendars, User Management, Presence, Virtual Events
 
-**Online Meetings & Transcripts**
-<sub>list-online-meetings, list-meeting-transcripts, get-meeting-transcript-content</sub>
+### Required Graph API Permissions
 
-**SharePoint Sites**  
-<sub>search-sharepoint-sites, get-sharepoint-site, get-sharepoint-site-by-path, list-sharepoint-site-drives,
-get-sharepoint-site-drive-by-id, list-sharepoint-site-items, get-sharepoint-site-item, list-sharepoint-site-lists,
-get-sharepoint-site-list, list-sharepoint-site-list-items, get-sharepoint-site-list-item,
-get-sharepoint-sites-delta</sub>
+Permissions are requested dynamically based on which tools are enabled. Use `--list-permissions` to see the exact permissions for your configuration:
 
-**Shared Mailboxes**  
-<sub>list-shared-mailbox-messages, list-shared-mailbox-folder-messages, get-shared-mailbox-message,
-send-shared-mailbox-mail</sub>
+```bash
+# Personal mode (default)
+npx @softeria/ms-365-mcp-server --list-permissions
 
-**User Management**  
-<sub>list-users</sub>
+# Organization mode (includes Teams, SharePoint, etc.)
+npx @softeria/ms-365-mcp-server --org-mode --list-permissions
+
+# Filtered by preset
+npx @softeria/ms-365-mcp-server --preset mail --list-permissions
+```
+
+This is useful for enterprise environments where Graph API permissions must be pre-approved and admin-consented before deploying a new version.
 
 ## Organization/Work Mode
 
@@ -306,6 +272,8 @@ npx @softeria/ms-365-mcp-server --http
 Then add connection with URL `http://localhost:3000/mcp` and ID `ms-365`.
 
 ![Open WebUI MCP Connection](https://github.com/user-attachments/assets/dcab71dd-cf02-4bcb-b7db-5725d6be4064)
+
+> **Running in Docker behind a reverse proxy?** Set `--public-url https://your-domain.com` so the OAuth authorize URL handed to the user's browser is reachable from outside the container network. See [docs/deployment.md](docs/deployment.md) for the full guide.
 
 ### Local Development
 
@@ -483,7 +451,15 @@ npx @softeria/ms-365-mcp-server --list-presets  # See all available presets
 
 Available presets: `mail`, `calendar`, `files`, `personal`, `work`, `excel`, `contacts`, `tasks`, `onenote`, `search`, `users`, `all`
 
-**Experimental:** `--discovery` starts with only 2 tools (`search-tools`, `execute-tool`) for minimal token usage.
+## Dynamic Tool Discovery
+
+Instead of loading all 90+ tools upfront, use dynamic discovery so the LLM finds and loads tools only when it needs them:
+
+```bash
+npx @softeria/ms-365-mcp-server --discovery
+```
+
+Keeps the initial context small and cuts token usage, especially useful for long sessions or cost-sensitive setups (e.g. Open WebUI running against a paid API).
 
 ## CLI Options
 
@@ -493,6 +469,7 @@ The following options can be used when running ms-365-mcp-server directly from t
 --login           Login using device code flow
 --logout          Log out and clear saved credentials
 --verify-login    Verify login without starting the server
+--list-permissions List all required Graph API permissions and exit (respects --org-mode, --preset, --enabled-tools)
 --org-mode        Enable organization/work mode from start (includes Teams, SharePoint, etc.)
 --work-mode       Alias for --org-mode
 --force-work-scopes Backwards compatibility alias for --org-mode (deprecated)
@@ -514,7 +491,8 @@ When running as an MCP server, the following options can be used:
 --preset <names>  Use preset tool categories (comma-separated). See "Tool Presets" section above
 --list-presets    List all available presets and exit
 --toon            (experimental) Enable TOON output format for 30-60% token reduction
---discovery       (experimental) Start with search-tools + execute-tool only
+--discovery       Dynamic tool discovery: loads tools on demand to reduce initial token usage (see "Dynamic Tool Discovery" above)
+--public-url <url> Public base URL for OAuth when behind a reverse proxy (see Open WebUI section and docs/deployment.md)
 ```
 
 Environment variables:
@@ -621,6 +599,10 @@ The Key Vault integration uses `DefaultAzureCredential` from the Azure Identity 
 ### Optional Dependencies
 
 The Azure Key Vault packages (`@azure/identity` and `@azure/keyvault-secrets`) are optional dependencies. They are only loaded when `MS365_MCP_KEYVAULT_URL` is configured. If you don't use Key Vault, these packages are not required.
+
+## Production Deployment
+
+See [docs/deployment.md](docs/deployment.md) for a full guide to hosting the server for organization-wide access, including Docker, Azure Container Apps, Azure App Service, Azure AD app registration, reverse proxy setup, client configuration, and exposed endpoints.
 
 ## Contributing
 

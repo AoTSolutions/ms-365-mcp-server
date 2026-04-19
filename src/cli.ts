@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -40,6 +40,7 @@ program
     'Use preset tool categories (comma-separated). Available: mail, calendar, files, personal, work, excel, contacts, tasks, onenote, search, users, all'
   )
   .option('--list-presets', 'List all available presets and exit')
+  .option('--list-permissions', 'List all required Graph API permissions and exit')
   .option(
     '--org-mode',
     'Enable organization/work mode from start (includes Teams, SharePoint, etc.)'
@@ -62,8 +63,14 @@ program
     'Use browser-based interactive OAuth flow instead of device code for stdio mode. Opens system browser with localhost callback for seamless sign-in.'
   )
   .option(
-    '--base-url <url>',
-    'Public base URL for OAuth metadata when running behind a reverse proxy (e.g. https://mcp.example.com)'
+    '--public-url <url>',
+    'Public base URL (e.g. https://mcp.example.com) used in browser-facing OAuth redirects when running behind a reverse proxy. Server-to-server endpoints (token, register) stay on the request host.'
+  )
+  .addOption(
+    // DEPRECATED: kept only so existing deployments that set --base-url or
+    // MS365_MCP_BASE_URL do not crash at startup. Use --public-url /
+    // MS365_MCP_PUBLIC_URL instead. Hidden from --help; undocumented.
+    new Option('--base-url <url>', 'deprecated: use --public-url').hideHelp()
   );
 
 export interface CommandOptions {
@@ -80,6 +87,7 @@ export interface CommandOptions {
   enabledTools?: string;
   preset?: string;
   listPresets?: boolean;
+  listPermissions?: boolean;
   orgMode?: boolean;
   workMode?: boolean;
   forceWorkScopes?: boolean;
@@ -89,6 +97,8 @@ export interface CommandOptions {
   enableDynamicRegistration?: boolean;
   dynamicRegistration?: boolean;
   authBrowser?: boolean;
+  publicUrl?: string;
+  /** @deprecated use publicUrl */
   baseUrl?: string;
 
   [key: string]: unknown;
@@ -127,6 +137,20 @@ export function parseArgs(): CommandOptions {
 
   if (process.env.ENABLED_TOOLS) {
     options.enabledTools = process.env.ENABLED_TOOLS;
+  }
+
+  // Validate tool filter regex early — fail at startup instead of silently
+  // disabling the filter at runtime (which would expose all tools)
+  if (options.enabledTools) {
+    try {
+      new RegExp(options.enabledTools, 'i');
+    } catch {
+      console.error(
+        `Error: invalid --enabled-tools regex pattern: "${options.enabledTools}". ` +
+          `Without a valid filter, all tools would be exposed.`
+      );
+      process.exit(1);
+    }
   }
 
   if (process.env.MS365_MCP_ORG_MODE === 'true' || process.env.MS365_MCP_ORG_MODE === '1') {
